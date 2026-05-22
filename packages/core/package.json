@@ -1,0 +1,53 @@
+{
+  "name": "@lixue2018/monitorx-core",
+  "version": "1.0.2",
+  "description": "前端监控核心库 - 支持错误捕获、性能监控、数据上报",
+  "type": "module",
+  "main": "./dist/index.cjs.js",
+  "module": "./dist/index.esm.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.esm.js",
+      "require": "./dist/index.cjs.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "vite build",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "monitor",
+    "frontend",
+    "error-tracking",
+    "performance",
+    "web-vitals",
+    "sdk"
+  ],
+  "author": "lixue2018 <761388994@qq.com>",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lixue2018/monitor-sdk.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/lixue2018/monitor-sdk/issues"
+  },
+  "homepage": "https://github.com/lixue2018/monitor-sdk#readme",
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "vite": "^5.0.0",
+    "vite-plugin-dts": "^3.0.0"
+  }
+}

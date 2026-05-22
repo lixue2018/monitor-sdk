@@ -1,0 +1,17 @@
+{
+  "name": "monitorx-vue3-demo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@lixue2018/monitorx-vue": "file:../../packages/vue",
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.1",
+    "vite": "^8.0.14"
+  }
+}
