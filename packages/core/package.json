@@ -1,6 +1,6 @@
 {
   "name": "@lixue2018/monitorx-core",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "前端监控核心库 - 支持错误捕获、性能监控、数据上报",
   "type": "module",
   "main": "./dist/index.cjs.js",

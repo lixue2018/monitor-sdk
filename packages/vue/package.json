@@ -1,6 +1,6 @@
 {
   "name": "@lixue2018/monitorx-vue",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "description": "Vue 2 & Vue 3 监控插件 - 基于 @lixue2018/monitorx-core",
   "type": "module",
   "main": "./dist/index.cjs.js",
@@ -47,11 +47,11 @@
   },
   "homepage": "https://github.com/lixue2018/monitor-sdk#readme",
   "peerDependencies": {
-    "@lixue2018/monitorx-core": "^1.0.0",
+    "@lixue2018/monitorx-core": "^1.0.3",
     "vue": "^2.7.0 || ^3.0.0"
   },
   "dependencies": {
-    "@lixue2018/monitorx-core": "^1.0.0"
+    "@lixue2018/monitorx-core": "^1.0.3"
   },
   "devDependencies": {
     "@lixue2018/monitorx-core": "file:../core",
