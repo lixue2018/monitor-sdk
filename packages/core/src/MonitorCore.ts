@@ -1,6 +1,7 @@
 import { ErrorMonitor } from './monitors/errorMonitor';
 import { PerformanceMonitor } from './monitors/performanceMonitor';
 import { ResourceMonitor } from './monitors/resourceMonitor';
+import { WhiteScreenMonitor } from './monitors/whiteScreenMonitor';
 import { Reporter } from './reporters/reporter';
 import type { MonitorConfig } from './types';
 
@@ -9,6 +10,7 @@ export class MonitorCore {
   private errorMonitor?: ErrorMonitor;
   private resourceMonitor?: ResourceMonitor;
   private performanceMonitor?: PerformanceMonitor;
+  private whiteScreenMonitor?: WhiteScreenMonitor;
   private enabled: boolean;
 
   constructor(config: MonitorConfig) {
@@ -22,6 +24,8 @@ export class MonitorCore {
       batchInterval: config.batchInterval,
       useBeacon: config.useBeacon,
       debug: config.debug,
+      pauseOnReportFailure: config.pauseOnReportFailure,
+      userIdStorageKeys: config.userIdStorageKeys,
     });
 
     if (!this.enabled) return;
@@ -32,13 +36,26 @@ export class MonitorCore {
     }
 
     if (config.enableResourceTracking !== false) {
-      this.resourceMonitor = new ResourceMonitor(this.reporter);
+      this.resourceMonitor = new ResourceMonitor(this.reporter, {
+        slowApiThreshold: config.slowApiThreshold,
+        enableSlowApiTracking: config.enableSlowApiTracking,
+        apiTrackUrlPatterns: config.apiTrackUrlPatterns,
+      });
       this.resourceMonitor.init();
     }
 
     if (config.enablePerformance !== false) {
       this.performanceMonitor = new PerformanceMonitor(this.reporter);
       this.performanceMonitor.init();
+    }
+
+    if (config.enableWhiteScreen) {
+      this.whiteScreenMonitor = new WhiteScreenMonitor(this.reporter, {
+        whiteBoxElements: config.whiteBoxElements,
+        initialDelay: config.whiteScreenInitialDelay,
+        checkInterval: config.whiteScreenCheckInterval,
+      });
+      this.whiteScreenMonitor.init();
     }
   }
 
@@ -89,5 +106,28 @@ export class MonitorCore {
   setUserId(userId: string): void {
     if (!this.enabled) return;
     this.reporter.setUserId(userId);
+  }
+
+  /** 立即执行白屏采样，命中则上报 */
+  checkWhiteScreen(): boolean {
+    if (!this.enabled || !this.whiteScreenMonitor) return false;
+    return this.whiteScreenMonitor.checkNow();
+  }
+
+  /** 开发模拟：直接上报一条 whiteScreen */
+  reportWhiteScreen(reason?: string): void {
+    if (!this.enabled) return;
+    if (this.whiteScreenMonitor) {
+      this.whiteScreenMonitor.reportManual(reason);
+      return;
+    }
+    this.reporter.send('whiteScreen', {
+      type: 'whiteScreen',
+      category: 'whiteScreen',
+      message: reason || '手动上报白屏',
+      timestamp: Date.now(),
+      pageUrl: window.location.href,
+      userAgent: navigator.userAgent,
+    });
   }
 }

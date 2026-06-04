@@ -1,5 +1,6 @@
 import { MonitorCore, type MonitorConfig } from '@lixue2018/monitorx-core';
 import type { App, Plugin } from 'vue';
+import { enrichVueErrorReport } from './enrichVueError';
 import { getSharedMonitor, setSharedMonitor } from './globalMonitor';
 import { vMonitor } from './directive';
 
@@ -32,12 +33,7 @@ function createVuePlugin(monitor: MonitorCore): Plugin {
         const originalErrorHandler = app.config.errorHandler;
         app.config.errorHandler = (err: unknown, vm: unknown, info: string) => {
           const error = err instanceof Error ? err : new Error(String(err));
-          monitor.reportError({
-            type: 'vue_error',
-            message: error.message,
-            stack: error.stack,
-            info,
-          });
+          monitor.reportError(enrichVueErrorReport(error, info));
           if (originalErrorHandler) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (originalErrorHandler as (err: unknown, vm: unknown, info: string) => void)(err, vm, info);
@@ -53,12 +49,7 @@ function createVuePlugin(monitor: MonitorCore): Plugin {
 
       const originalErrorHandler = Vue.config.errorHandler;
       Vue.config.errorHandler = (err: Error, vm: unknown, info: string) => {
-        monitor.reportError({
-          type: 'vue_error',
-          message: err.message,
-          stack: err.stack,
-          info,
-        });
+        monitor.reportError(enrichVueErrorReport(err, info));
         if (originalErrorHandler) originalErrorHandler(err, vm, info);
       };
 
