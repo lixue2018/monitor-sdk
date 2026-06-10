@@ -4,8 +4,10 @@ export { ErrorMonitor } from './monitors/errorMonitor';
 export { ResourceMonitor } from './monitors/resourceMonitor';
 export { PerformanceMonitor } from './monitors/performanceMonitor';
 export { WhiteScreenMonitor } from './monitors/whiteScreenMonitor';
+export { RecordScreenMonitor } from './monitors/recordScreenMonitor';
 export type {
   MonitorConfig,
+  RecordScreenRouterBridge,
   ReporterConfig,
   ErrorReportData,
   ResourceErrorData,
@@ -20,4 +22,8 @@ export {
   type SlowApiLevel,
 } from './utils/slowApiLevel';
 export { createApiUrlMatcher } from './utils/apiUrlFilter';
+export {
+  attachMonitorApiContext,
+  type MonitorApiContext,
+} from './utils/apiErrorPayload';
 export { parseStackFrame, type ParsedStackFrame } from './utils/parseStackFrame';

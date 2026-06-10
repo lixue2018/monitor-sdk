@@ -2,10 +2,51 @@
 export const MAX_API_RESPONSE_LEN = 8192;
 export const MAX_API_REQUEST_LEN = MAX_API_RESPONSE_LEN;
 
+/** 业务 axios transform throw Error 时附带的接口上下文 */
+export interface MonitorApiContext {
+  url?: string;
+  baseURL?: string;
+  method?: string;
+  status?: number;
+  params?: unknown;
+  data?: unknown;
+  response?: unknown;
+}
+
+export const MONITOR_API_CONTEXT_KEY = '__monitorApiContext';
+
 export function truncateResponse(body: string, maxLen = MAX_API_RESPONSE_LEN): string {
   if (!body) return '';
   if (body.length <= maxLen) return body;
   return `${body.slice(0, maxLen)}\n... [truncated]`;
+}
+
+/** 业务层在 throw 前挂载，供 ErrorMonitor 采集请求/响应 */
+export function attachMonitorApiContext(error: Error, ctx: MonitorApiContext): Error {
+  (error as Error & { [key: string]: unknown })[MONITOR_API_CONTEXT_KEY] = ctx;
+  return error;
+}
+
+export function readMonitorApiContext(reason: unknown): MonitorApiContext | null {
+  if (!reason || typeof reason !== 'object') return null;
+  const ctx = (reason as Record<string, unknown>)[MONITOR_API_CONTEXT_KEY];
+  if (!ctx || typeof ctx !== 'object') return null;
+  return ctx as MonitorApiContext;
+}
+
+function resolveAxiosUrl(config: { url?: string; baseURL?: string }): string {
+  const path = config.url || '';
+  if (/^https?:\/\//i.test(path)) return path;
+  const base = (config.baseURL || '').replace(/\/+$/, '');
+  if (!base) return path;
+  if (!path) return base;
+  return `${base}${path.startsWith('/') ? path : `/${path}`}`;
+}
+
+function resolveContextUrl(ctx: MonitorApiContext | null): string {
+  if (!ctx) return '';
+  if (ctx.url && /^https?:\/\//i.test(ctx.url)) return ctx.url;
+  return resolveAxiosUrl({ url: ctx.url, baseURL: ctx.baseURL });
 }
 
 /** 序列化 XHR/Fetch/Axios 请求体 */
@@ -32,17 +73,54 @@ export function formatRequestBody(body: unknown): string {
     return `[Blob ${body.size} bytes, not captured]`;
   }
   try {
-    return truncateResponse(JSON.stringify(body), MAX_API_REQUEST_LEN);
+    return truncateResponse(JSON.stringify(body, null, 2), MAX_API_REQUEST_LEN);
   } catch {
     return truncateResponse(String(body), MAX_API_REQUEST_LEN);
   }
 }
 
-/** 从 Axios config 提取请求体 */
+function readAxiosConfig(reason: unknown): {
+  url?: string;
+  baseURL?: string;
+  method?: string;
+  params?: unknown;
+  data?: unknown;
+} | null {
+  if (!reason || typeof reason !== 'object') return null;
+  const err = reason as { config?: { url?: string; baseURL?: string; method?: string; params?: unknown; data?: unknown }; cause?: unknown };
+  if (err.config?.url || err.config?.baseURL) return err.config;
+  if (err.cause) return readAxiosConfig(err.cause);
+  return null;
+}
+
+/** 采集请求参数：GET query / POST body / 完整 URL */
+export function readAxiosRequestParams(reason: unknown): string {
+  const config = readAxiosConfig(reason);
+  const ctx = readMonitorApiContext(reason);
+
+  const payload: Record<string, unknown> = {};
+  const url = config ? resolveAxiosUrl(config) : resolveContextUrl(ctx);
+  if (url) payload.url = url;
+
+  const params = config?.params ?? ctx?.params;
+  const data = config?.data ?? ctx?.data;
+  if (params != null && params !== '' && !(typeof params === 'object' && Object.keys(params as object).length === 0)) {
+    payload.params = params;
+  }
+  if (data != null && data !== '') {
+    payload.body = data;
+  }
+
+  if (Object.keys(payload).length === 0) return '';
+  if (Object.keys(payload).length === 1 && payload.url) {
+    return formatRequestBody({ url: payload.url });
+  }
+  return formatRequestBody(payload);
+}
+
+/** @deprecated 使用 readAxiosRequestParams */
 export function readAxiosRequestBody(reason: unknown): string {
-  if (!reason || typeof reason !== 'object') return '';
-  const data = (reason as { config?: { data?: unknown } }).config?.data;
-  return formatRequestBody(data);
+  return readAxiosRequestParams(reason);
 }
 
 export function readXhrResponseBody(xhr: XMLHttpRequest): string {
@@ -53,7 +131,7 @@ export function readXhrResponseBody(xhr: XMLHttpRequest): string {
     }
     if (rt === 'json') {
       const res = xhr.response;
-      return truncateResponse(typeof res === 'string' ? res : JSON.stringify(res ?? null));
+      return truncateResponse(typeof res === 'string' ? res : JSON.stringify(res ?? null, null, 2));
     }
     if (rt === 'document') {
       return truncateResponse(xhr.responseXML?.documentElement?.outerHTML || '');
@@ -87,18 +165,44 @@ export async function readFetchResponseBody(response: Response): Promise<string>
   }
 }
 
-/** 从 Axios 错误对象提取响应体 */
+/** 从 Axios 错误或业务挂载上下文提取响应体 */
 export function readAxiosResponseBody(reason: unknown): string {
   if (!reason || typeof reason !== 'object') return '';
-  const res = (reason as { response?: { data?: unknown } }).response;
-  if (!res?.data) return '';
-  const data = res.data;
-  if (typeof data === 'string') return truncateResponse(data);
-  try {
-    return truncateResponse(JSON.stringify(data));
-  } catch {
-    return truncateResponse(String(data));
+  const err = reason as { response?: { data?: unknown }; cause?: unknown };
+  const resData = err.response?.data;
+  if (resData != null && resData !== '') {
+    if (typeof resData === 'string') return truncateResponse(resData);
+    try {
+      return truncateResponse(JSON.stringify(resData, null, 2));
+    } catch {
+      return truncateResponse(String(resData));
+    }
   }
+  if (err.cause) {
+    const nested = readAxiosResponseBody(err.cause);
+    if (nested) return nested;
+  }
+  const ctx = readMonitorApiContext(reason);
+  if (ctx?.response != null && ctx.response !== '') {
+    return formatRequestBody(ctx.response);
+  }
+  return '';
+}
+
+export function readApiErrorParts(reason: unknown): {
+  requestBody: string;
+  response: string;
+  url?: string;
+  method?: string;
+} {
+  const ctx = readMonitorApiContext(reason);
+  const config = readAxiosConfig(reason);
+  return {
+    requestBody: readAxiosRequestParams(reason),
+    response: readAxiosResponseBody(reason),
+    url: config ? resolveAxiosUrl(config) : resolveContextUrl(ctx) || undefined,
+    method: (config?.method ?? ctx?.method)?.toUpperCase(),
+  };
 }
 
 export interface ApiErrorInput {
@@ -107,6 +211,7 @@ export interface ApiErrorInput {
   status?: number;
   duration?: number;
   requestBody?: string;
+  requestParams?: string;
   response?: string;
   errorMessage?: string;
   message?: string;
@@ -129,7 +234,8 @@ export function buildApiErrorReport(input: ApiErrorInput): Record<string, unknow
       : `${method} ${url} — 请求失败`;
   }
 
-  const requestBody = input.requestBody ? truncateResponse(input.requestBody, MAX_API_REQUEST_LEN) : '';
+  const requestPayload = input.requestBody || input.requestParams || '';
+  const requestBody = requestPayload ? truncateResponse(requestPayload, MAX_API_REQUEST_LEN) : '';
 
   return {
     type: 'api_error',
@@ -141,6 +247,7 @@ export function buildApiErrorReport(input: ApiErrorInput): Record<string, unknow
     message,
     errorMessage: errMsg || message,
     requestBody,
+    requestParams: requestBody,
     response,
     timestamp: Date.now(),
     pageUrl: input.pageUrl ?? (typeof window !== 'undefined' ? window.location.href : ''),

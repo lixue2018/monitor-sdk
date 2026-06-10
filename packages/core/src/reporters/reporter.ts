@@ -1,4 +1,6 @@
 import type { ReporterConfig } from '../types';
+import { applyRecordScreenToReport } from '../utils/recordScreenState';
+import { sanitizeReportPayload } from '../utils/truncateReportText';
 
 export class Reporter {
   private queue: Record<string, unknown>[] = [];
@@ -75,7 +77,7 @@ export class Reporter {
   }
 
   private enrichData(data: Record<string, unknown>): Record<string, unknown> {
-    return {
+    return sanitizeReportPayload({
       ...data,
       app_key: this.config.appKey,
       apikey: this.config.appKey, // 与 fe-monitor-server 字段一致
@@ -85,21 +87,105 @@ export class Reporter {
       screen_resolution: `${window.screen.width}x${window.screen.height}`,
       language: navigator.language,
       timestamp: data.timestamp ?? Date.now(),
-    };
+    });
   }
 
   send(type: string, data: Record<string, unknown>): void {
-    const reportData = this.enrichData({ type, ...data });
-    this.queue.push(reportData);
+    if (type === 'recordScreen') {
+      void this.sendRecordScreen(data);
+      return;
+    }
+
+    const reportData = this.enrichData(applyRecordScreenToReport(type, { type, ...data }));
 
     if (this.config.debug) {
       console.info('[MonitorX]', type, reportData);
     }
 
+    this.queue.push(reportData);
+
     if (this.queue.length >= this.config.batchSize) {
       this.flush();
     } else {
       this.scheduleFlush();
+    }
+  }
+
+  /** 录屏立即上报（支持分片；返回是否全部成功） */
+  async sendRecordScreen(data: Record<string, unknown>): Promise<boolean> {
+    const chunks = data.eventsChunks as string[] | undefined;
+    const { eventsChunks: _drop, ...rest } = data;
+
+    if (chunks && chunks.length > 1) {
+      if (this.config.debug) {
+        console.info('[MonitorX] recordScreen 分片上传', {
+          recordScreenId: rest.recordScreenId,
+          parts: chunks.length,
+        });
+      }
+      for (let i = 0; i < chunks.length; i += 1) {
+        const ok = await this.sendImmediate(
+          this.enrichData({
+            type: 'recordScreen',
+            ...rest,
+            events: chunks[i],
+            eventsPart: i,
+            eventsTotal: chunks.length,
+          }),
+          { largeBody: true },
+        );
+        if (!ok) return false;
+      }
+      if (this.config.debug) {
+        console.info('[MonitorX] recordScreen 分片上报成功', rest.recordScreenId);
+      }
+      return true;
+    }
+
+    const reportData = this.enrichData({ type: 'recordScreen', ...rest });
+    if (this.config.debug) {
+      const events = rest.events;
+      const eventsSize = typeof events === 'string' ? events.length : 0;
+      console.info('[MonitorX] recordScreen 上传', {
+        recordScreenId: rest.recordScreenId,
+        eventsEncodedLen: eventsSize,
+      });
+    }
+    return this.sendImmediate(reportData, { largeBody: true });
+  }
+
+  /** 单条立即上报（录屏等）；largeBody 时禁用 keepalive（Chrome 限制 body ≤64KB） */
+  private async sendImmediate(
+    data: Record<string, unknown>,
+    options?: { largeBody?: boolean },
+  ): Promise<boolean> {
+    const body = JSON.stringify([data]);
+    const useKeepalive = !options?.largeBody && body.length <= 60_000;
+
+    try {
+      const res = await fetch(this.config.endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        keepalive: useKeepalive,
+      });
+      if (!res.ok) {
+        const reason = await this.formatFlushFailure(res);
+        if (this.config.debug) {
+          console.warn('[MonitorX] recordScreen 上报失败:', reason);
+        }
+        return false;
+      }
+      if (this.config.debug) {
+        console.info('[MonitorX] recordScreen 上报成功');
+      }
+      return true;
+    } catch (err) {
+      if (this.config.debug) {
+        const msg = err instanceof Error ? err.message : 'network error';
+        console.warn('[MonitorX] recordScreen 上报失败:', msg);
+      }
+      return false;
     }
   }
 
@@ -133,7 +219,7 @@ export class Reporter {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: payload,
-        keepalive: true,
+        keepalive: payload.length <= 60_000,
       });
 
       if (!res.ok) {

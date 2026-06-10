@@ -230,11 +230,17 @@ export class ResourceMonitor {
     const self = this;
 
     window.fetch = async function (...args: Parameters<typeof fetch>) {
-      const startTime = Date.now();
       const input = args[0];
       const init = args[1];
       const url =
         typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+
+      // 监控自身上报不走劫持，避免 initiator 误导、重复处理与大包延迟
+      if (/reportData|monitor-api/i.test(url)) {
+        return originalFetch(...args);
+      }
+
+      const startTime = Date.now();
       const method = self.resolveFetchMethod(input, init);
 
       try {

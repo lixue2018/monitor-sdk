@@ -1,4 +1,8 @@
-import { MonitorCore, type MonitorConfig } from '@lixue2018/monitorx-core';
+import {
+  MonitorCore,
+  type MonitorConfig,
+  type RecordScreenRouterBridge,
+} from '@lixue2018/monitorx-core';
 import type { App, Plugin } from 'vue';
 import { enrichVueErrorReport } from './enrichVueError';
 import { getSharedMonitor, setSharedMonitor } from './globalMonitor';
@@ -29,6 +33,16 @@ function createVuePlugin(monitor: MonitorCore): Plugin {
         const app = appOrVue;
         app.config.globalProperties.$monitor = monitor;
         app.provide('monitor', monitor);
+
+        const originalMount = app.mount.bind(app);
+        app.mount = (container) => {
+          const instance = originalMount(container);
+          const router = app.config.globalProperties.$router as
+            | RecordScreenRouterBridge
+            | undefined;
+          void monitor.onAppMounted(router);
+          return instance;
+        };
 
         const originalErrorHandler = app.config.errorHandler;
         app.config.errorHandler = (err: unknown, vm: unknown, info: string) => {

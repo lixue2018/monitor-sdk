@@ -1,9 +1,10 @@
 import { ErrorMonitor } from './monitors/errorMonitor';
 import { PerformanceMonitor } from './monitors/performanceMonitor';
 import { ResourceMonitor } from './monitors/resourceMonitor';
+import { RecordScreenMonitor } from './monitors/recordScreenMonitor';
 import { WhiteScreenMonitor } from './monitors/whiteScreenMonitor';
 import { Reporter } from './reporters/reporter';
-import type { MonitorConfig } from './types';
+import type { MonitorConfig, RecordScreenRouterBridge } from './types';
 
 export class MonitorCore {
   private reporter: Reporter;
@@ -11,6 +12,7 @@ export class MonitorCore {
   private resourceMonitor?: ResourceMonitor;
   private performanceMonitor?: PerformanceMonitor;
   private whiteScreenMonitor?: WhiteScreenMonitor;
+  private recordScreenMonitor?: RecordScreenMonitor;
   private enabled: boolean;
 
   constructor(config: MonitorConfig) {
@@ -57,6 +59,36 @@ export class MonitorCore {
       });
       this.whiteScreenMonitor.init();
     }
+
+    if (config.enableRecordScreen) {
+      const recordSample = config.debug
+        ? 1
+        : (config.recordScreenSampleRate ?? 0.1);
+      const recordSampledIn = Math.random() <= recordSample;
+      if (recordSampledIn) {
+        this.recordScreenMonitor = new RecordScreenMonitor(this.reporter, {
+          recordScreenTime: config.recordScreenTime,
+          recordScreenTypeList: config.recordScreenTypeList,
+          maskAllInputs: config.recordScreenMaskAllInputs,
+          recordCanvas: config.recordScreenCanvas,
+          debug: config.debug,
+        });
+        this.recordScreenMonitor.init();
+        console.info('[MonitorX] 录屏已开启', `sampleRate=${recordSample}，mount 后启动 rrweb`);
+      } else {
+        console.info(
+          '[MonitorX] 录屏未命中采样',
+          `sampleRate=${recordSample}，刷新页面可重试`,
+        );
+      }
+    } else {
+      console.info('[MonitorX] 录屏未开启', 'enableRecordScreen=false');
+    }
+  }
+
+  /** Vue 根组件 mount 后启动录屏（等路由就绪与业务 DOM 渲染） */
+  onAppMounted(router?: RecordScreenRouterBridge): void {
+    this.recordScreenMonitor?.startAfterMount('vue-mount', router);
   }
 
   reportError(data: Record<string, unknown>): void {

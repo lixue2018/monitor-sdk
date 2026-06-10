@@ -1,3 +1,9 @@
+/** Vue Router 最小接口：录屏在路由就绪后再启动，并在路由切换后补拍快照 */
+export interface RecordScreenRouterBridge {
+  isReady?: () => Promise<void>;
+  afterEach?: (guard: () => void) => () => void;
+}
+
 export interface ReporterConfig {
   endpoint: string;
   appKey: string;
@@ -43,6 +49,18 @@ export interface MonitorConfig {
   whiteScreenInitialDelay?: number;
   /** 白屏检测轮询间隔（ms） */
   whiteScreenCheckInterval?: number;
+  /** 是否开启 rrweb 录屏（错误发生时上报对应分段），默认 false */
+  enableRecordScreen?: boolean;
+  /** 录屏采样率 0~1，默认 0.1（在 enableRecordScreen 之上再采样） */
+  recordScreenSampleRate?: number;
+  /** 录屏滚动窗口 / checkout 间隔（秒），默认 10；上报严格限制在此窗口内 */
+  recordScreenTime?: number;
+  /** 触发保留录屏的上报类型，默认 js_error、vue_error */
+  recordScreenTypeList?: string[];
+  /** 录屏时 mask 所有 input，默认 true */
+  recordScreenMaskAllInputs?: boolean;
+  /** 是否录制 canvas，默认 false（降压） */
+  recordScreenCanvas?: boolean;
 }
 
 export interface ErrorReportData {
