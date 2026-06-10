@@ -57,7 +57,7 @@ export interface MonitorConfig {
   recordScreenTime?: number;
   /** 触发保留录屏的上报类型，默认 js_error、vue_error */
   recordScreenTypeList?: string[];
-  /** 录屏时 mask 所有 input，默认 true */
+  /** 录屏时 mask 所有 input，默认 false（仅 password 脱敏） */
   recordScreenMaskAllInputs?: boolean;
   /** 是否录制 canvas，默认 false（降压） */
   recordScreenCanvas?: boolean;

@@ -58,7 +58,7 @@ export class RecordScreenMonitor {
     this.typeList = options.recordScreenTypeList?.length
       ? [...options.recordScreenTypeList]
       : DEFAULT_RECORD_TYPE_LIST;
-    this.maskAllInputs = options.maskAllInputs !== false;
+    this.maskAllInputs = options.maskAllInputs === true;
     this.recordCanvas = options.recordCanvas === true;
     this.debug = options.debug ?? false;
   }
