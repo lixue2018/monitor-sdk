@@ -2,6 +2,43 @@
 export const MAX_API_RESPONSE_LEN = 8192;
 export const MAX_API_REQUEST_LEN = MAX_API_RESPONSE_LEN;
 
+/** 常见业务成功码（HTTP 200 时 body.code 等于其中之一视为成功） */
+export const BIZ_SUCCESS_CODES = new Set([0, 200]);
+
+export function isBusinessFailureCode(code: number | null | undefined): boolean {
+  return typeof code === 'number' && Number.isFinite(code) && !BIZ_SUCCESS_CODES.has(code);
+}
+
+/** 从 JSON 响应体解析业务 code 字段 */
+export function parseBusinessCodeFromResponseBody(body: string): number | null {
+  if (!body?.trim()) return null;
+  try {
+    const data = JSON.parse(body) as { code?: unknown; status?: unknown };
+    if (typeof data.code === 'number' && Number.isFinite(data.code)) return data.code;
+    if (typeof data.status === 'number' && Number.isFinite(data.status)) return data.status;
+  } catch {
+    // 非 JSON 响应忽略
+  }
+  return null;
+}
+
+/** 结合 HTTP 状态与响应体业务码，判断是否需要上报 api_error */
+export function resolveApiFailureFromHttp(
+  httpStatus: number,
+  responseBody: string,
+): { shouldReport: boolean; status: number } {
+  if (httpStatus >= 400) {
+    return { shouldReport: true, status: httpStatus };
+  }
+  if (httpStatus >= 200 && httpStatus < 300) {
+    const bizCode = parseBusinessCodeFromResponseBody(responseBody);
+    if (isBusinessFailureCode(bizCode)) {
+      return { shouldReport: true, status: bizCode as number };
+    }
+  }
+  return { shouldReport: false, status: httpStatus };
+}
+
 /** 业务 axios transform throw Error 时附带的接口上下文 */
 export interface MonitorApiContext {
   url?: string;
@@ -43,10 +80,14 @@ function resolveAxiosUrl(config: { url?: string; baseURL?: string }): string {
   return `${base}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
-function resolveContextUrl(ctx: MonitorApiContext | null): string {
+export function resolveMonitorApiContextUrl(ctx: MonitorApiContext | null): string {
   if (!ctx) return '';
   if (ctx.url && /^https?:\/\//i.test(ctx.url)) return ctx.url;
   return resolveAxiosUrl({ url: ctx.url, baseURL: ctx.baseURL });
+}
+
+function resolveContextUrl(ctx: MonitorApiContext | null): string {
+  return resolveMonitorApiContextUrl(ctx);
 }
 
 /** 序列化 XHR/Fetch/Axios 请求体 */

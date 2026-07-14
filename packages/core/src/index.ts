@@ -26,4 +26,5 @@ export {
   attachMonitorApiContext,
   type MonitorApiContext,
 } from './utils/apiErrorPayload';
+export { buildApiErrorFromReason } from './utils/buildApiErrorFromReason';
 export { parseStackFrame, type ParsedStackFrame } from './utils/parseStackFrame';

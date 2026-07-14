@@ -1,17 +1,6 @@
 import type { ErrorReportData } from '../types';
 import type { Reporter } from '../reporters/reporter';
-import {
-  buildApiErrorReport,
-  readApiErrorParts,
-  readMonitorApiContext,
-} from '../utils/apiErrorPayload';
-import {
-  extractHttpErrorContext,
-  formatHttpErrorMessage,
-  inferHttpStatusFromMessage,
-  isLikelyBusinessApiError,
-  resolveApiErrorCategory,
-} from '../utils/httpErrorContext';
+import { buildApiErrorFromReason } from '../utils/buildApiErrorFromReason';
 import { freezeRecordScreenForError } from '../utils/recordScreenState';
 import { resolveSourceMappedPosition } from '../utils/resolveSourceMappedPosition';
 
@@ -98,40 +87,11 @@ export class ErrorMonitor {
     if (stack && stack.trim() === message.trim()) {
       stack = undefined;
     }
-    const httpCtx = extractHttpErrorContext(reason);
-    const businessApiError = !httpCtx && isLikelyBusinessApiError(message);
 
     // 凡 HTTP/Axios/业务接口 rejection 均归 api_error（含 4xx/5xx、超时、网络异常、业务 throw Error）
-    if (httpCtx || businessApiError) {
-      const status =
-        httpCtx?.status && httpCtx.status >= 400
-          ? httpCtx.status
-          : inferHttpStatusFromMessage(message) ?? httpCtx?.status ?? 500;
-      const displayMessage = httpCtx ? formatHttpErrorMessage(message, httpCtx) : message;
-      const ctxForCategory = httpCtx ?? {
-        url: '',
-        isTimeout: /timeout/i.test(message),
-        isNetworkError: message === 'Network Error' || /后端接口连接异常|Backend int\. conn/i.test(message),
-        status,
-      };
-
-      const apiParts = readApiErrorParts(reason);
-      const ctxMeta = readMonitorApiContext(reason);
-
-      this.reporter.send(
-        'api_error',
-        buildApiErrorReport({
-          message: displayMessage,
-          url: httpCtx?.url || apiParts.url || ctxMeta?.url,
-          method: httpCtx?.method || apiParts.method || ctxMeta?.method,
-          status: ctxMeta?.status && ctxMeta.status >= 400 ? ctxMeta.status : status,
-          category: resolveApiErrorCategory(ctxForCategory),
-          errorMessage: message,
-          requestBody: apiParts.requestBody,
-          response: apiParts.response,
-          pageUrl: window.location.href,
-        }),
-      );
+    const apiReport = buildApiErrorFromReason(reason);
+    if (apiReport) {
+      this.reporter.send('api_error', apiReport);
       return;
     }
 

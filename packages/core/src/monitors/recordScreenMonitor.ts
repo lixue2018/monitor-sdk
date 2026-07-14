@@ -7,6 +7,8 @@ import {
   getRecordScreenId,
   getUploadRecordScreenId,
   initRecordScreenState,
+  isRecordScreenFlushFinal,
+  MIN_USEFUL_RECORD_SPAN_MS,
   peekRecordScreenError,
   rotateRecordScreenId,
   setRecordScreenUploadHandler,
@@ -29,7 +31,7 @@ export interface RecordScreenMonitorOptions {
   debug?: boolean;
 }
 
-const DEFAULT_RECORD_TYPE_LIST = ['js_error', 'vue_error'];
+const DEFAULT_RECORD_TYPE_LIST = ['js_error', 'vue_error', 'api_error'];
 
 function takeSnapshotSafe(): void {
   try {
@@ -119,6 +121,15 @@ export class RecordScreenMonitor {
       console.info('[MonitorX] recordScreen 已上报', boundId, '（录屏器继续运行，滚动下一窗口）');
     };
 
+    /** 跳过录屏上传（错误已单独上报）；清理状态避免重复重试 */
+    const skipRecordScreenUpload = (boundId: string, reason: string) => {
+      uploadedIds.add(boundId);
+      events = [];
+      clearRecordScreenError();
+      rotateRecordScreenId();
+      console.info('[MonitorX] 跳过录屏上报', reason, boundId);
+    };
+
     const uploadEvents = (boundId: string, trigger: string) => {
       if (uploading) return;
       if (!peekRecordScreenError()) return;
@@ -132,14 +143,36 @@ export class RecordScreenMonitor {
           `span=${eventTimeSpanMs(events)}ms`,
           `nodes=${richestSnapshotNodes(events)}`,
         );
+        if (isRecordScreenFlushFinal()) {
+          skipRecordScreenUpload(boundId, '录屏未就绪/未加载出来');
+          return;
+        }
         takeSnapshotSafe();
         return;
       }
 
       const replayable = pickReplayEvents(events);
+      const spanMs = eventTimeSpanMs(replayable);
+      if (spanMs < MIN_USEFUL_RECORD_SPAN_MS) {
+        if (!isRecordScreenFlushFinal()) {
+          console.info(
+            '[MonitorX] recordScreen 时长不足',
+            trigger,
+            `${spanMs}ms < ${MIN_USEFUL_RECORD_SPAN_MS}ms，继续等待`,
+          );
+          takeSnapshotSafe();
+          return;
+        }
+        skipRecordScreenUpload(boundId, `录屏过短(${spanMs}ms)`);
+        return;
+      }
+
       const chunks = zipRecordScreenEventsChunks(replayable);
       if (chunks.length === 0) {
         console.warn('[MonitorX] recordScreen 压缩失败', trigger);
+        if (isRecordScreenFlushFinal()) {
+          skipRecordScreenUpload(boundId, '录屏压缩失败');
+        }
         return;
       }
 
@@ -153,7 +186,7 @@ export class RecordScreenMonitor {
         `raw=${events.length}`,
         `replay=${replayable.length}`,
         `incr=${incrementalEventCount(replayable)}`,
-        `span=${eventTimeSpanMs(replayable)}ms`,
+        `span=${spanMs}ms`,
         `nodes=${richestSnapshotNodes(replayable)}`,
       );
 

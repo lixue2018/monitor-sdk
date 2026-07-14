@@ -1,3 +1,5 @@
+import { readMonitorApiContext, resolveMonitorApiContextUrl } from './apiErrorPayload';
+
 export interface HttpErrorContext {
   url: string;
   method?: string;
@@ -41,6 +43,20 @@ function readAxiosLike(reason: unknown): {
 
 /** 从 Axios 等 HTTP 客户端 rejection 中解析请求地址 */
 export function extractHttpErrorContext(reason: unknown): HttpErrorContext | null {
+  const ctxMeta = readMonitorApiContext(reason);
+  if (ctxMeta && (ctxMeta.url || ctxMeta.baseURL)) {
+    const url = resolveMonitorApiContextUrl(ctxMeta);
+    if (url) {
+      return {
+        url,
+        method: ctxMeta.method,
+        status: ctxMeta.status ?? 500,
+        isTimeout: false,
+        isNetworkError: false,
+      };
+    }
+  }
+
   const err = readAxiosLike(reason);
   if (!err) return null;
 

@@ -5,6 +5,7 @@ import { RecordScreenMonitor } from './monitors/recordScreenMonitor';
 import { WhiteScreenMonitor } from './monitors/whiteScreenMonitor';
 import { Reporter } from './reporters/reporter';
 import type { MonitorConfig, RecordScreenRouterBridge } from './types';
+import { buildApiErrorFromReason } from './utils/buildApiErrorFromReason';
 
 export class MonitorCore {
   private reporter: Reporter;
@@ -93,12 +94,27 @@ export class MonitorCore {
 
   reportError(data: Record<string, unknown>): void {
     if (!this.enabled) return;
-    this.reporter.send('js_error', {
+    const type =
+      typeof data.type === 'string' && data.type.trim() ? data.type : 'js_error';
+    this.reporter.send(type, {
       timestamp: Date.now(),
       pageUrl: window.location.href,
       userAgent: navigator.userAgent,
       ...data,
+      type,
     });
+  }
+
+  /**
+   * 若异常带有 HTTP/业务接口上下文则上报 api_error 并返回 true。
+   * Vue errorHandler 应优先调用，避免业务接口错误被记成 vue_error。
+   */
+  tryReportApiError(reason: unknown): boolean {
+    if (!this.enabled) return false;
+    const report = buildApiErrorFromReason(reason);
+    if (!report) return false;
+    this.reporter.send('api_error', report);
+    return true;
   }
 
   reportEvent(data: Record<string, unknown>): void {

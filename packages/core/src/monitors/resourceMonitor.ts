@@ -5,6 +5,7 @@ import {
   formatRequestBody,
   readFetchResponseBody,
   readXhrResponseBody,
+  resolveApiFailureFromHttp,
 } from '../utils/apiErrorPayload';
 import { createApiUrlMatcher } from '../utils/apiUrlFilter';
 import { resolveSlowApiLevel, SLOW_API_LEVEL_LABELS } from '../utils/slowApiLevel';
@@ -199,15 +200,19 @@ export class ResourceMonitor {
 
         self.maybeReportSlowApi({ url, method, status: this.status, duration });
 
-        if (this.status < 400) return;
+        if (!self.shouldTrackApiUrl(url)) return;
+
+        const responseBody = readXhrResponseBody(this);
+        const failure = resolveApiFailureFromHttp(this.status, responseBody);
+        if (!failure.shouldReport) return;
 
         self.maybeReportApiError({
           url,
           method,
-          status: this.status,
+          status: failure.status,
           duration,
           requestBody: this._monitorData?.requestBody,
-          response: readXhrResponseBody(this),
+          response: responseBody,
           pageUrl: window.location.href,
         } as ApiErrorData);
       });
@@ -249,17 +254,20 @@ export class ResourceMonitor {
 
         self.maybeReportSlowApi({ url, method, status: response.status, duration });
 
-        if (!response.ok) {
+        if (self.shouldTrackApiUrl(url)) {
           const responseBody = await readFetchResponseBody(response);
-          self.maybeReportApiError({
-            url,
-            method,
-            status: response.status,
-            duration,
-            requestBody: formatRequestBody(init?.body),
-            response: responseBody,
-            pageUrl: window.location.href,
-          } as ApiErrorData);
+          const failure = resolveApiFailureFromHttp(response.status, responseBody);
+          if (failure.shouldReport) {
+            self.maybeReportApiError({
+              url,
+              method,
+              status: failure.status,
+              duration,
+              requestBody: formatRequestBody(init?.body),
+              response: responseBody,
+              pageUrl: window.location.href,
+            } as ApiErrorData);
+          }
         }
         return response;
       } catch (error) {

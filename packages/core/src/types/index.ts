@@ -55,7 +55,7 @@ export interface MonitorConfig {
   recordScreenSampleRate?: number;
   /** 录屏滚动窗口 / checkout 间隔（秒），默认 10；上报严格限制在此窗口内 */
   recordScreenTime?: number;
-  /** 触发保留录屏的上报类型，默认 js_error、vue_error */
+  /** 触发保留录屏的上报类型，默认 js_error、vue_error、api_error */
   recordScreenTypeList?: string[];
   /** 录屏时 mask 所有 input，默认 false（仅 password 脱敏） */
   recordScreenMaskAllInputs?: boolean;
